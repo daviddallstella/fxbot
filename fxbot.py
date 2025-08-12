@@ -50,6 +50,12 @@ SYMBOL_MAPPING = {
 }
 REVERSE_SYMBOL_MAPPING = {v: k for k, v in SYMBOL_MAPPING.items()}
 
+# --- Constantes da API cTrader ---
+# Adicionado para resolver o NameError: name 'SELL' is not defined
+BUY = 1   # Representa ProtoOATradeSide.BUY
+SELL = 2  # Representa ProtoOATradeSide.SELL
+MARKET = 1 # Representa ProtoOAOrderType.MARKET
+
 # --- Parâmetros da Estratégia ---
 PAIR_1 = 'AUDUSD'
 PAIR_2 = 'NZDUSD'

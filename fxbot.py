@@ -113,7 +113,7 @@ class PositionManager:
         self.account_id = account_id
         self.client = client
         self.position = 'FLAT'
-        self.volume_id = int(TRADE_VOLUME_IN_LOTS * 100000)
+        self.volume_id = int(TRADE_VOLUME_IN_LOTS * 10000000)
 
     def execute_trade(self, signal):
         """Recebe um sinal ('GO_LONG', 'GO_SHORT', 'CLOSE_POSITION') e age."""

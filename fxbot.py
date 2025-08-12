@@ -63,6 +63,7 @@ ZSCORE_WINDOW = 10
 ENTRY_THRESHOLD = 1.0
 EXIT_THRESHOLD = 0.0
 TRADE_VOLUME_IN_LOTS = 0.01
+PIP_VALUE = 0.0001
 
 # ==============================================================================
 # 3. FUNÇÕES DE AUTENTICAÇÃO
@@ -107,13 +108,38 @@ def get_access_token():
 # 4. CLASSES MODULARES DO ROBÔ
 # ==============================================================================
 
+
+
 class PositionManager:
     """Controla o estado da posição atual e envia ordens."""
     def __init__(self, account_id, client):
         self.account_id = account_id
         self.client = client
-        self.position = 'FLAT'
         self.volume_id = int(TRADE_VOLUME_IN_LOTS * 10000000)
+        self.reset_position_state()
+
+    def reset_position_state(self):
+        """Reseta o estado da posição para o estado inicial."""
+        self.position = 'FLAT'
+        self.open_positions = {}
+
+    def register_open_trade(self, position_id, symbol, trade_side, entry_price):
+        """Registra os detalhes de uma perna da operação que foi aberta."""
+        if position_id not in self.open_positions:
+            self.open_positions[position_id] = {
+                "symbol": symbol,
+                "trade_side": trade_side,
+                "entry_price": entry_price
+            }
+            logging.info(f"[POS-MGR] Posição Aberta: ID {position_id} | {symbol} | Preço: {entry_price}")
+
+    def register_close_trade(self, position_id):
+        """Remove uma perna da operação do estado e verifica se a posição geral foi fechada."""
+        if position_id in self.open_positions:
+            del self.open_positions[position_id]
+
+        # Retorna True se não houver mais posições abertas
+        return not self.open_positions
 
     def execute_trade(self, signal):
         """Recebe um sinal ('GO_LONG', 'GO_SHORT', 'CLOSE_POSITION') e age."""
@@ -131,7 +157,7 @@ class PositionManager:
             self._send_market_order(PAIR_2, BUY)
             self.position = 'SHORT'
 
-        elif signal == 'CLOSE_POSITION' and current_position != 'FLAT':
+        elif signal == 'CLOSE_POSITION' and current_position in ['LONG', 'SHORT']:
             logging.info("Sinal de FECHAMENTO recebido. Encerrando posições...")
             if current_position == 'LONG':
                 self._send_market_order(PAIR_1, SELL)
@@ -139,7 +165,7 @@ class PositionManager:
             elif current_position == 'SHORT':
                 self._send_market_order(PAIR_1, BUY)
                 self._send_market_order(PAIR_2, SELL)
-            self.position = 'FLAT'
+            self.position = 'CLOSING'
 
     def _send_market_order(self, symbol_name, trade_side):
         request = ProtoOANewOrderReq()
@@ -153,8 +179,6 @@ class PositionManager:
         self.client.send(request)
         trade_side_str = "COMPRA" if trade_side == BUY else "VENDA"
         logging.info(f"Ordem de {trade_side_str} enviada para {symbol_name}, {TRADE_VOLUME_IN_LOTS} lotes.")
-
-
 
 class ZScoreStrategy:
     """Gerencia o estado e a lógica de cálculo da estratégia."""
@@ -184,7 +208,7 @@ class ZScoreStrategy:
 
         mid_price1 = (p1_bid + p1_ask) / 2
         mid_price2 = (p2_bid + p2_ask) / 2
-        
+
         new_bar_dict = {
             f'{PAIR_1}_mid': mid_price1, f'{PAIR_2}_mid': mid_price2,
             'timestamp': pd.Timestamp.now(tz='UTC')
@@ -201,10 +225,10 @@ class ZScoreStrategy:
         bars_df['Ratio'] = bars_df[f'{PAIR_1}_mid'] / bars_df[f'{PAIR_2}_mid']
         bars_df['Ratio_MA'] = bars_df['Ratio'].rolling(window=ZSCORE_WINDOW).mean()
         bars_df['Ratio_STD'] = bars_df['Ratio'].rolling(window=ZSCORE_WINDOW).std()
-        
+
         prev_z = self.z_score
         self.z_score = (bars_df['Ratio'].iloc[-1] - bars_df['Ratio_MA'].iloc[-1]) / bars_df['Ratio_STD'].iloc[-1]
-        
+
         log_msg = f"[STRATEGY] Nova Barra. Z-Score: {self.z_score:.4f}"
         signal = None
         if prev_z is not None and not np.isnan(prev_z) and not np.isnan(self.z_score):
@@ -212,7 +236,7 @@ class ZScoreStrategy:
             if self.z_score < -ENTRY_THRESHOLD and prev_z >= -ENTRY_THRESHOLD: signal = 'GO_LONG'
             if (prev_z > EXIT_THRESHOLD and self.z_score <= EXIT_THRESHOLD) or \
                (prev_z < EXIT_THRESHOLD and self.z_score >= EXIT_THRESHOLD): signal = 'CLOSE_POSITION'
-        
+
         return log_msg, signal
 
 class CTraderHandler:
@@ -254,46 +278,93 @@ class CTraderHandler:
             request = ProtoOASubscribeSpotsReq(ctidTraderAccountId=TRADING_ACCOUNT_ID, symbolId=list(SYMBOL_MAPPING.values()))
             client.send(request)
 
-        # Dentro do método _on_message
-
         elif msg.payloadType == ProtoOASubscribeSpotsRes().payloadType:
             logging.info("Assinatura de feeds de preço realizada com sucesso.")
             reactor.callLater(1, self._main_loop)
-            
 
         elif msg.payloadType == ProtoOASpotEvent().payloadType:
             event = ProtoOASpotEvent()
             event.ParseFromString(msg.payload)
             symbol_name = REVERSE_SYMBOL_MAPPING.get(event.symbolId)
-
             if symbol_name:
                 bid = event.bid / 100000.0 if event.HasField("bid") else None
                 ask = event.ask / 100000.0 if event.HasField("ask") else None
                 self.strategy.on_tick(symbol_name, bid, ask)
-                
+
         elif msg.payloadType == ProtoOAExecutionEvent().payloadType:
             event = ProtoOAExecutionEvent()
             event.ParseFromString(msg.payload)
-            logging.info(f"Evento de Execução: {event.order.orderStatus} para ordem {event.order.orderId}")
+
+            if event.order.orderStatus == 2: # ORDER_STATUS_FILLED
+
+                # Se for uma ordem de ABERTURA
+                if self.position_manager.position in ['LONG', 'SHORT']:
+                    pos_id = event.order.positionId
+                    symbol_name = REVERSE_SYMBOL_MAPPING.get(event.order.symbolId)
+                    trade_side = event.order.tradeSide
+                    exec_price = event.order.executionPrice / 100000.0
+                    self.position_manager.register_open_trade(pos_id, symbol_name, trade_side, exec_price)
+
+                # Se for uma ordem de FECHAMENTO
+                elif self.position_manager.position == 'CLOSING':
+                    pos_id = event.order.positionId
+                    symbol_name = REVERSE_SYMBOL_MAPPING.get(event.order.symbolId)
+                    pnl = event.order.closedPnl / 100.0 # PnL é geralmente em centavos
+                    logging.info(f"[RESULT] Perna Fechada: {symbol_name} | Lucro/Prejuízo: {pnl:.2f}")
+
+                    # Checa se todas as pernas da posição foram fechadas
+                    is_fully_closed = self.position_manager.register_close_trade(pos_id)
+                    if is_fully_closed:
+                        logging.info("[POS-MGR] Posição geral fechada. Resetando estado.")
+                        self.position_manager.reset_position_state()
+
+            else:
+                logging.info(f"Evento de Execução: {event.order.orderStatus} para ordem {event.order.orderId}")
 
         elif msg.payloadType == ProtoOAOrderErrorEvent().payloadType:
             event = ProtoOAOrderErrorEvent()
             event.ParseFromString(msg.payload)
             logging.error(f"Erro na Ordem: {event.description} | Codigo: {event.errorCode}")
-            # Dentro do método _on_message
 
-        elif msg.payloadType == ProtoOASubscribeSpotsRes().payloadType:
-            logging.info("Assinatura de feeds de preço realizada com sucesso.")
-            reactor.callLater(1, self._main_loop)
-            # ADICIONE ESTAS DUAS LINHAS:
-            logging.info("Iniciando ciclo de heartbeat a cada 30 segundos.")
-            reactor.callLater(30, self._send_heartbeat)
+    def _monitor_open_position(self):
+        """Calcula e loga o P/L em pips da posição aberta."""
+        if self.position_manager.position == 'FLAT' or not self.position_manager.open_positions:
+            return
+
+        total_pnl_pips = 0
+        log_parts = []
+
+        for pos_id, trade_details in self.position_manager.open_positions.items():
+            symbol = trade_details["symbol"]
+            entry_price = trade_details["entry_price"]
+            trade_side = trade_details["trade_side"]
+
+            current_prices = self.strategy.prices.get(symbol)
+            if not current_prices or current_prices['bid'] is None or current_prices['ask'] is None:
+                logging.warning(f"[MONITOR] Preços para {symbol} indisponíveis para cálculo de P/L.")
+                return
+
+            pnl_pips = 0
+            if trade_side == BUY:
+                pnl_pips = (current_prices['bid'] - entry_price) / PIP_VALUE
+            elif trade_side == SELL:
+                pnl_pips = (entry_price - current_prices['ask']) / PIP_VALUE
+
+            total_pnl_pips += pnl_pips
+            log_parts.append(f"{symbol} P/L: {pnl_pips:+.1f} pips")
+
+        logging.info(f"[MONITOR] Posição Aberta: {', '.join(log_parts)} | Total P/L: {total_pnl_pips:+.1f} pips")
+
 
     def _main_loop(self):
         """Loop principal que despacha o trabalho pesado para um thread separado."""
         now = dt.datetime.now(dt.timezone.utc)
         if now.minute != self.last_bar_check_minute:
             self.last_bar_check_minute = now.minute
+
+            if self.position_manager.position != 'FLAT':
+                self._monitor_open_position()
+
             if self.last_bar_timestamp is not None:
                 d = threads.deferToThread(self.strategy.processar_nova_barra)
                 d.addCallbacks(self._handle_strategy_result, self._handle_strategy_error)
@@ -309,11 +380,6 @@ class CTraderHandler:
     def _handle_strategy_error(self, failure):
         """Errback executado se ocorrer um erro no thread de processamento."""
         logging.error("Erro CRÍTICO no processamento da barra.", exc_info=failure)
-
-# ==============================================================================
-# 5. PONTO DE ENTRADA DA APLICAÇÃO
-# ==============================================================================
-
 if __name__ == "__main__":
     # Habilita o faulthandler...
     log_file = open('faulthandler_crash.log', 'w')

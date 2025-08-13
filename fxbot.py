@@ -298,26 +298,27 @@ class CTraderHandler:
             event = ProtoOAExecutionEvent()
             event.ParseFromString(msg.payload)
 
-            # DEBUG: Imprime a estrutura completa do evento
-            logging.info(f"DEBUG EXECUTION EVENT: {event}")
-
             if event.order.orderStatus == 2: # ORDER_STATUS_FILLED
 
-                symbol_name = REVERSE_SYMBOL_MAPPING.get(event.symbolId)
+                # CORREÇÃO DEFINITIVA: O caminho correto, confirmado pelo log de debug.
+                symbol_id = event.position.tradeData.symbolId
+                symbol_name = REVERSE_SYMBOL_MAPPING.get(symbol_id)
                 if not symbol_name:
-                    logging.error(f"Não foi possível encontrar o nome do símbolo para o ID: {event.symbolId}")
+                    logging.error(f"Não foi possível encontrar o nome do símbolo para o ID: {symbol_id}")
                     return
 
+                # Se for uma ordem de ABERTURA
                 if self.position_manager.position in ['LONG', 'SHORT']:
                     pos_id = event.position.positionId
-                    trade_side = event.position.tradeSide
+                    trade_side = event.position.tradeData.tradeSide
                     exec_price = event.order.executionPrice / 100000.0
                     self.position_manager.register_open_trade(pos_id, symbol_name, trade_side, exec_price)
 
+                # Se for uma ordem de FECHAMENTO
                 elif self.position_manager.position == 'CLOSING':
                     pos_id = event.position.positionId
                     pnl = event.position.closedPnl / 100.0
-                    logging.info(f"[RESULT] Perna Fechada: {symbol_name} | Lucro/Prejuízo: {pnl:.2f}")
+                    logging.info(f"[RESULT] Perna Fechada: {symbol_name} | Lucro/Prejuízo: ${pnl:.2f}")
 
                     is_fully_closed = self.position_manager.register_close_trade(pos_id)
                     if is_fully_closed:

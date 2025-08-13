@@ -316,8 +316,10 @@ class CTraderHandler:
 
                 elif self.position_manager.position == 'CLOSING':
                     pos_id = event.position.positionId
-                    pnl = event.position.closedPnl / 100.0
-                    logging.info(f"[RESULT] Perna Fechada: {symbol_name} | Lucro/Prejuízo: ${pnl:.2f}")
+                    # pnl = event.position.closedPnl / 100.0 # Removido para evitar crash.
+                    # logging.info(f"[RESULT] Perna Fechada: {symbol_name} | Lucro/Prejuízo: ${pnl:.2f}")
+                    logging.info(f"[RESULT] Perna Fechada: {symbol_name} | ID: {pos_id}")
+
 
                     is_fully_closed = self.position_manager.register_close_trade(pos_id)
                     if is_fully_closed:
@@ -386,7 +388,6 @@ class CTraderHandler:
         """Errback executado se ocorrer um erro no thread de processamento."""
         logging.error("Erro CRÍTICO no processamento da barra.", exc_info=failure)
 
-if __name__ == "__main__":
     # Habilita o faulthandler...
     log_file = open('faulthandler_crash.log', 'w')
     faulthandler.enable(file=log_file, all_threads=True)

@@ -239,6 +239,7 @@ class ZScoreStrategy:
 
         return log_msg, signal
 
+
 class CTraderHandler:
     """Orquestra a conexão, o loop de eventos e a lógica de threading."""
     def __init__(self, access_token):
@@ -297,22 +298,26 @@ class CTraderHandler:
 
             if event.order.orderStatus == 2: # ORDER_STATUS_FILLED
 
+                # CORREÇÃO: Acessar symbolId através de event.position.symbolId
+                symbol_name = REVERSE_SYMBOL_MAPPING.get(event.position.symbolId)
+                if not symbol_name:
+                    logging.error(f"Não foi possível encontrar o nome do símbolo para o ID: {event.position.symbolId}")
+                    return
+
                 # Se for uma ordem de ABERTURA
                 if self.position_manager.position in ['LONG', 'SHORT']:
-                    pos_id = event.order.positionId
-                    symbol_name = REVERSE_SYMBOL_MAPPING.get(event.order.symbolId)
-                    trade_side = event.order.tradeSide
+                    pos_id = event.position.positionId
+                    trade_side = event.position.tradeSide
                     exec_price = event.order.executionPrice / 100000.0
                     self.position_manager.register_open_trade(pos_id, symbol_name, trade_side, exec_price)
 
                 # Se for uma ordem de FECHAMENTO
                 elif self.position_manager.position == 'CLOSING':
-                    pos_id = event.order.positionId
-                    symbol_name = REVERSE_SYMBOL_MAPPING.get(event.order.symbolId)
-                    pnl = event.order.closedPnl / 100.0 # PnL é geralmente em centavos
+                    pos_id = event.position.positionId
+                    # O PnL é por posição, então usamos o pnl da posição, não da ordem
+                    pnl = event.position.closedPnl / 100.0
                     logging.info(f"[RESULT] Perna Fechada: {symbol_name} | Lucro/Prejuízo: {pnl:.2f}")
 
-                    # Checa se todas as pernas da posição foram fechadas
                     is_fully_closed = self.position_manager.register_close_trade(pos_id)
                     if is_fully_closed:
                         logging.info("[POS-MGR] Posição geral fechada. Resetando estado.")
@@ -380,6 +385,7 @@ class CTraderHandler:
     def _handle_strategy_error(self, failure):
         """Errback executado se ocorrer um erro no thread de processamento."""
         logging.error("Erro CRÍTICO no processamento da barra.", exc_info=failure)
+
 if __name__ == "__main__":
     # Habilita o faulthandler...
     log_file = open('faulthandler_crash.log', 'w')

@@ -397,6 +397,16 @@ class CTraderHandler:
     log_formatter = logging.Formatter(
         fmt='%(asctime)s.%(msecs)03d [%(levelname)s] %(message)s',
         datefmt='%Y-%m-%d %H:%M:%S'
+if __name__ == "__main__":
+    # Habilita o faulthandler...
+    log_file = open('faulthandler_crash.log', 'w')
+    faulthandler.enable(file=log_file, all_threads=True)
+
+    # --- Configuração Avançada do Logging com UTC ---
+    # 1. Cria um formatador que define o estilo da mensagem de log
+    log_formatter = logging.Formatter(
+        fmt='%(asctime)s.%(msecs)03d [%(levelname)s] %(message)s',
+        datefmt='%Y-%m-%d %H:%M:%S'
     )
     # 2. A MÁGICA ACONTECE AQUI: Diz ao formatador para usar o tempo UTC (GMT)
     log_formatter.converter = time.gmtime
@@ -422,7 +432,7 @@ class CTraderHandler:
     if access_token:
         robot_handler = CTraderHandler(access_token)
         robot_handler.start()
-        
+
         logging.info("Robô iniciado. Pressione Ctrl+C para parar.")
         reactor.run()
     else:

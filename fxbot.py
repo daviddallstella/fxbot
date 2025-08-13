@@ -240,6 +240,7 @@ class ZScoreStrategy:
         return log_msg, signal
 
 
+
 class CTraderHandler:
     """Orquestra a conexão, o loop de eventos e a lógica de threading."""
     def __init__(self, access_token):
@@ -298,10 +299,10 @@ class CTraderHandler:
 
             if event.order.orderStatus == 2: # ORDER_STATUS_FILLED
 
-                # CORREÇÃO: Acessar symbolId através de event.position.symbolId
-                symbol_name = REVERSE_SYMBOL_MAPPING.get(event.position.symbolId)
+                # CORREÇÃO FINAL: Acessar symbolId através de event.symbolId
+                symbol_name = REVERSE_SYMBOL_MAPPING.get(event.symbolId)
                 if not symbol_name:
-                    logging.error(f"Não foi possível encontrar o nome do símbolo para o ID: {event.position.symbolId}")
+                    logging.error(f"Não foi possível encontrar o nome do símbolo para o ID: {event.symbolId}")
                     return
 
                 # Se for uma ordem de ABERTURA
@@ -314,7 +315,6 @@ class CTraderHandler:
                 # Se for uma ordem de FECHAMENTO
                 elif self.position_manager.position == 'CLOSING':
                     pos_id = event.position.positionId
-                    # O PnL é por posição, então usamos o pnl da posição, não da ordem
                     pnl = event.position.closedPnl / 100.0
                     logging.info(f"[RESULT] Perna Fechada: {symbol_name} | Lucro/Prejuízo: {pnl:.2f}")
 

@@ -241,6 +241,7 @@ class ZScoreStrategy:
 
 
 
+
 class CTraderHandler:
     """Orquestra a conexão, o loop de eventos e a lógica de threading."""
     def __init__(self, access_token):
@@ -297,22 +298,22 @@ class CTraderHandler:
             event = ProtoOAExecutionEvent()
             event.ParseFromString(msg.payload)
 
+            # DEBUG: Imprime a estrutura completa do evento
+            logging.info(f"DEBUG EXECUTION EVENT: {event}")
+
             if event.order.orderStatus == 2: # ORDER_STATUS_FILLED
 
-                # CORREÇÃO FINAL: Acessar symbolId através de event.symbolId
                 symbol_name = REVERSE_SYMBOL_MAPPING.get(event.symbolId)
                 if not symbol_name:
                     logging.error(f"Não foi possível encontrar o nome do símbolo para o ID: {event.symbolId}")
                     return
 
-                # Se for uma ordem de ABERTURA
                 if self.position_manager.position in ['LONG', 'SHORT']:
                     pos_id = event.position.positionId
                     trade_side = event.position.tradeSide
                     exec_price = event.order.executionPrice / 100000.0
                     self.position_manager.register_open_trade(pos_id, symbol_name, trade_side, exec_price)
 
-                # Se for uma ordem de FECHAMENTO
                 elif self.position_manager.position == 'CLOSING':
                     pos_id = event.position.positionId
                     pnl = event.position.closedPnl / 100.0
@@ -322,7 +323,6 @@ class CTraderHandler:
                     if is_fully_closed:
                         logging.info("[POS-MGR] Posição geral fechada. Resetando estado.")
                         self.position_manager.reset_position_state()
-
             else:
                 logging.info(f"Evento de Execução: {event.order.orderStatus} para ordem {event.order.orderId}")
 

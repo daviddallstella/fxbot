@@ -243,6 +243,7 @@ class ZScoreStrategy:
 
 
 
+
 class CTraderHandler:
     """Orquestra a conexão, o loop de eventos e a lógica de threading."""
     def __init__(self, access_token):
@@ -270,14 +271,6 @@ class CTraderHandler:
         logging.info(f"Desconectado: {reason}")
         if reactor.running: reactor.stop()
 
-    def _send_heartbeat(self):
-        """Envia um ping para manter a conexão ativa."""
-        request = ProtoOAPingReq()
-        request.timestamp = int(time.time() * 1000)
-        self.client.send(request)
-        logging.info("Enviando Heartbeat (Ping)...")
-        reactor.callLater(30, self._send_heartbeat)
-
     def _on_message(self, client, msg):
         if msg.payloadType == ProtoOAApplicationAuthRes().payloadType:
             logging.info("Autenticação da aplicação bem-sucedida. Autenticando conta...")
@@ -293,9 +286,6 @@ class CTraderHandler:
         elif msg.payloadType == ProtoOASubscribeSpotsRes().payloadType:
             logging.info("Assinatura de feeds de preço realizada com sucesso.")
             reactor.callLater(1, self._main_loop)
-            # Inicia o ciclo de heartbeats para manter a conexão ativa
-            logging.info("Iniciando ciclo de heartbeat a cada 30 segundos.")
-            reactor.callLater(30, self._send_heartbeat)
 
         elif msg.payloadType == ProtoOASpotEvent().payloadType:
             event = ProtoOASpotEvent()
@@ -321,7 +311,6 @@ class CTraderHandler:
                 if self.position_manager.position in ['LONG', 'SHORT']:
                     pos_id = event.position.positionId
                     trade_side = event.position.tradeData.tradeSide
-                    # CORREÇÃO: O preço de execução não precisa ser dividido por 100000
                     exec_price = event.order.executionPrice
                     self.position_manager.register_open_trade(pos_id, symbol_name, trade_side, exec_price)
 

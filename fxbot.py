@@ -87,9 +87,9 @@ def get_access_token():
         auth_url = requests.Request('GET', "https://connect.spotware.com/apps/auth", params=auth_params).prepare().url
         print(f"\n[AUTH] Por favor, abra esta URL no seu navegador e autorize a aplicação:\n{auth_url}")
         webbrowser.open(auth_url)
-        
+
         auth_code = input("\n[AUTH] Cole o Código de Autorização aqui (parâmetro 'code' da URL de retorno): ")
-        
+
         token_data = {
             "grant_type": "authorization_code", "client_id": CLIENT_ID,
             "client_secret": CLIENT_SECRET, "code": auth_code,
@@ -98,7 +98,7 @@ def get_access_token():
         response = requests.post("https://openapi.ctrader.com/apps/token", data=token_data)
         response.raise_for_status()
         token_response = response.json()
-        
+
         with open(token_file, "w") as f:
             json.dump(token_response, f, indent=4)
         logging.info(f"Tokens obtidos e salvos com sucesso em '{token_file}'")
@@ -388,15 +388,6 @@ class CTraderHandler:
         """Errback executado se ocorrer um erro no thread de processamento."""
         logging.error("Erro CRÍTICO no processamento da barra.", exc_info=failure)
 
-    # Habilita o faulthandler...
-    log_file = open('faulthandler_crash.log', 'w')
-    faulthandler.enable(file=log_file, all_threads=True)
-
-    # --- Configuração Avançada do Logging com UTC ---
-    # 1. Cria um formatador que define o estilo da mensagem de log
-    log_formatter = logging.Formatter(
-        fmt='%(asctime)s.%(msecs)03d [%(levelname)s] %(message)s',
-        datefmt='%Y-%m-%d %H:%M:%S'
 if __name__ == "__main__":
     # Habilita o faulthandler...
     log_file = open('faulthandler_crash.log', 'w')

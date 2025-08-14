@@ -258,15 +258,21 @@ class CTraderHandler:
                 logging.info(f"[HIST] Recebidas {len(response.trendbar)} barras para {symbol_name}.")
                 for bar in response.trendbar:
                     # ==============================================================================
-                    # CORREÇÃO APLICADA AQUI
-                    # Usando bar.Close (PascalCase) como o preço de referência da barra histórica,
-                    # uma vez que 'bar.close' (lowercase) causava AttributeError.
+                    # CORREÇÃO DEFINITIVA APLICADA AQUI
+                    # Os logs mostraram que os preços são deltas a partir do 'low' da barra.
+                    # Open  = bar.low + bar.deltaOpen
+                    # High  = bar.low + bar.deltaHigh
+                    # Close = bar.low + bar.deltaClose
+                    # Low   = bar.low
                     # ==============================================================================
-                    close_price = bar.Close / 100000.0
+
+                    # A estratégia usa o preço de fechamento como proxy para bid/ask.
+                    close_price = (bar.low + bar.deltaClose) / 100000.0
+
                     bar_data = {
                         "timestamp_ms": bar.utcTimestampInMinutes * 60 * 1000,
-                        "bid": close_price, # Usando o fechamento como proxy
-                        "ask": close_price  # Usando o fechamento como proxy
+                        "bid": close_price,
+                        "ask": close_price
                     }
                     self._historical_data[symbol_name].append(bar_data)
                 

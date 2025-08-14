@@ -259,9 +259,10 @@ class CTraderHandler:
                 for bar in response.trendbar:
                     # ==============================================================================
                     # CORREÇÃO APLICADA AQUI
-                    # Usando bar.close como o preço de referência da barra histórica
+                    # Usando bar.Close (PascalCase) como o preço de referência da barra histórica,
+                    # uma vez que 'bar.close' (lowercase) causava AttributeError.
                     # ==============================================================================
-                    close_price = bar.close / 100000.0
+                    close_price = bar.Close / 100000.0
                     bar_data = {
                         "timestamp_ms": bar.utcTimestampInMinutes * 60 * 1000,
                         "bid": close_price, # Usando o fechamento como proxy
